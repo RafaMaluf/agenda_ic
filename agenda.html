@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Agenda Semanal de Manutenções</title>
+  <style>
+    /* Básicos de página */
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background-color: #f7f9fc;
+      color: #1f2937;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 4px;
+    }
+    h2 {
+      text-align: center;
+      margin-top: 0;
+      margin-bottom: 20px;
+      font-size: 18px;
+      color: #4b5563;
+    }
+    /* Estrutura de tabela */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    th, td {
+      border: 1px solid #e5e7eb;
+      padding: 6px;
+      vertical-align: top;
+      position: relative;
+    }
+    th {
+      background-color: #f3f4f6;
+      font-weight: 600;
+      font-size: 14px;
+      text-align: center;
+    }
+    td.employee-cell {
+      background-color: #f9fafb;
+      width: 160px;
+    }
+    /* Barra de progresso genérica */
+    .progress-bar {
+      background-color: #e5e7eb;
+      height: 14px;
+      width: 100%;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 4px;
+    }
+    .progress {
+      height: 100%;
+      background-color: #3b82f6;
+      border-radius: 3px;
+    }
+    /* Informações do dia */
+    .day-cell .info {
+      font-size: 12px;
+      line-height: 1.3;
+      min-height: 32px;
+    }
+    .details-btn {
+      display: inline-block;
+      padding: 4px 6px;
+      font-size: 12px;
+      background-color: #f9fafb;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .details-btn:hover {
+      background-color: #f3f4f6;
+    }
+    /* Janela de detalhes */
+    .details-box {
+      position: absolute;
+      background-color: #fff7ed;
+      border: 1px solid #f0abfc;
+      padding: 8px;
+      border-radius: 4px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+      white-space: pre;
+      z-index: 999;
+      display: none;
+      max-width: 320px;
+      font-family: monospace;
+      font-size: 12px;
+      line-height: 1.2;
+      background-image: linear-gradient(to bottom right, #fdf4ff, #fbe4ff);
+    }
+  </style>
+</head>
+<body>
+  <h1>Agenda Semanal de Manutenções</h1>
+  <h2 id="weekRange"></h2>
+  <div style="overflow-x: auto;">
+    <table id="scheduleTable">
+      <thead>
+        <tr>
+          <th>Funcionário</th>
+          <th>Domingo</th>
+          <th>Segunda</th>
+          <th>Terça</th>
+          <th>Quarta</th>
+          <th>Quinta</th>
+          <th>Sexta</th>
+          <th>Sábado</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Linhas geradas via script -->
+      </tbody>
+    </table>
+  </div>
+  <!-- Caixa de detalhes flutuante -->
+  <div id="detailsPopup" class="details-box"></div>
+
+  <script>
+    /*
+     * Este script constrói uma agenda semanal simples de manutenções a partir
+     * de dados estáticos. As manutenções maiores que 8 horas são
+     * automaticamente divididas entre os dias seguintes, e cada dia pode
+     * acomodar até 8 horas de trabalho (horário de almoço 12:00–13:00 não é
+     * representado explicitamente, mas está implícito no limite de 8 horas/dia).
+     */
+    (function() {
+      // Definição dos funcionários e de suas tarefas (manutenções).
+      // Cada tarefa possui: id, WorkOrderID, especialidade, data de início e
+      // duração em horas. A entidade é opcional e usada apenas nos detalhes.
+      const employees = [
+        {
+          id: 1,
+          nome: 'Funcionário 1',
+          tasks: [
+            { id: 1, workOrderID: 'WO001', specialty: 'Eletricista', start: '2025-01-27T09:00', hours: 12, entity: 'M' },
+            { id: 2, workOrderID: 'WO002', specialty: 'Mecânica',     start: '2025-01-29T10:00', hours: 6,  entity: 'P' }
+          ]
+        },
+        {
+          id: 2,
+          nome: 'Funcionário 2',
+          tasks: [
+            { id: 3, workOrderID: 'WO003', specialty: 'Hidráulica',   start: '2025-01-27T08:00', hours: 8,  entity: 'M' },
+            { id: 4, workOrderID: 'WO004', specialty: 'Elétrica',     start: '2025-01-30T13:00', hours: 4,  entity: 'P' }
+          ]
+        },
+        {
+          id: 3,
+          nome: 'Funcionário 3',
+          tasks: [
+            { id: 5, workOrderID: 'WO005', specialty: 'Industrial',   start: '2025-01-28T09:00', hours: 15, entity: 'M' },
+            { id: 6, workOrderID: 'WO006', specialty: 'Caldeiraria',  start: '2025-01-31T08:00', hours: 3,  entity: 'P' }
+          ]
+        },
+        {
+          id: 4,
+          nome: 'Funcionário 4',
+          tasks: [
+            { id: 7, workOrderID: 'WO007', specialty: 'Soldagem',     start: '2025-01-27T07:00', hours: 9,  entity: 'M' }
+          ]
+        }
+      ];
+
+      // Define a semana base. O exemplo utiliza a semana do dia 27/01/2025 (segunda-feira).
+      // Usa hora do meio-dia para evitar problemas de fuso horário ao criar datas.
+      const weekStart = new Date('2025-01-27T12:00:00');
+      // Calcula o domingo imediatamente anterior ao início da semana.
+      const sunday = new Date(weekStart);
+      sunday.setDate(weekStart.getDate() - 1);
+      // Lista de objetos Date correspondentes a cada dia de domingo a sábado.
+      const dates = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(sunday);
+        d.setDate(sunday.getDate() + i);
+        dates.push(d);
+      }
+
+      // Mostra a data do início da semana (domingo) no subtítulo.
+      const formatDate = d => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      document.getElementById('weekRange').textContent = 'Semana de ' + formatDate(dates[0]);
+
+      // Divide uma tarefa em segmentos diários de no máximo 8 horas. Esse
+      // algoritmo ignora o horário de almoço, mas respeita a duração máxima
+      // permitida por dia. Os segmentos resultantes possuem data e horas
+      // atribuídas, mantendo referência à tarefa original.
+      function splitTask(task) {
+        const segments = [];
+        let remaining = task.hours;
+        let currentDate = new Date(task.start);
+        while (remaining > 0) {
+          const hoursToday = Math.min(remaining, 8);
+          segments.push({
+            date: new Date(currentDate),
+            hours: hoursToday,
+            original: task
+          });
+          remaining -= hoursToday;
+          // Avança para o dia seguinte
+          currentDate.setDate(currentDate.getDate() + 1);
+        }
+        return segments;
+      }
+
+      // Constrói a estrutura de horário por funcionário, contabilizando
+      // quantas horas e quantas tarefas caem em cada dia da semana.
+      const scheduleByEmployee = employees.map(emp => {
+        const dayMap = {};
+        // Inicializa cada dia com zero horas e lista vazia de tarefas
+        dates.forEach(date => {
+          const key = date.toISOString().split('T')[0];
+          dayMap[key] = { totalHours: 0, tasks: [] };
+        });
+        let totalWeekHours = 0;
+        emp.tasks.forEach(task => {
+          const segments = splitTask(task);
+          segments.forEach(segment => {
+            const key = segment.date.toISOString().split('T')[0];
+            if (dayMap[key]) {
+              dayMap[key].totalHours += segment.hours;
+              dayMap[key].tasks.push({
+                id: task.id,
+                workOrderID: task.workOrderID,
+                specialty: task.specialty,
+                entity: task.entity,
+                hours: segment.hours,
+                estimated: task.hours,
+                date: key,
+                start: task.start
+              });
+            }
+            totalWeekHours += segment.hours;
+          });
+        });
+        return { employee: emp, days: dayMap, totalHours: totalWeekHours };
+      });
+
+      // Seleciona o corpo da tabela onde as linhas serão inseridas
+      const tbody = document.querySelector('#scheduleTable tbody');
+      scheduleByEmployee.forEach(item => {
+        const tr = document.createElement('tr');
+        // Coluna do funcionário com a barra de progresso semanal
+        const empCell = document.createElement('td');
+        empCell.className = 'employee-cell';
+        const weeklyPercent = Math.min(item.totalHours / 40, 1) * 100;
+        empCell.innerHTML = `
+          <div style="font-weight: bold; margin-bottom: 4px;">${item.employee.nome}</div>
+          <div class="progress-bar" style="height: 16px;">
+            <div class="progress" style="width: ${weeklyPercent}%; background-color: #10b981;"></div>
+          </div>
+          <div style="font-size: 12px; margin-top: 2px;">Total horas: ${item.totalHours.toFixed(2)} / 40</div>
+        `;
+        tr.appendChild(empCell);
+        // Cria células para cada dia
+        dates.forEach(date => {
+          const key = date.toISOString().split('T')[0];
+          const cellData = item.days[key];
+          const td = document.createElement('td');
+          td.className = 'day-cell';
+          // Percentual do dia sobre 8 horas
+          const dayPercent = Math.min(cellData.totalHours / 8, 1) * 100;
+          const barColor = dayPercent === 0 ? '#e5e7eb' : '#3b82f6';
+          td.innerHTML = `
+            <div class="progress-bar">
+              <div class="progress" style="width: ${dayPercent}%; background-color: ${barColor};"></div>
+            </div>
+            <div class="info">${cellData.totalHours > 0 ? 'Total ordens: ' + cellData.tasks.length + '<br>Total horas: ' + cellData.totalHours.toFixed(2) + 'h' : '--'}</div>
+            ${cellData.totalHours > 0 ? '<button class="details-btn">Detalhes</button>' : ''}
+          `;
+          // Se houver detalhes, adiciona ouvinte para o botão
+          if (cellData.totalHours > 0) {
+            const button = td.querySelector('.details-btn');
+            button.addEventListener('click', event => {
+              event.stopPropagation();
+              const detailsPopup = document.getElementById('detailsPopup');
+              // Se o popup já estiver aberto na mesma célula, fecha-o
+              const cellIdentifier = `${key}-${item.employee.id}`;
+              if (detailsPopup.style.display === 'block' && detailsPopup.dataset.cell === cellIdentifier) {
+                detailsPopup.style.display = 'none';
+                return;
+              }
+              // Monta o texto de detalhes em formato semelhante ao JSON
+              let texto = 'Detalhes da manutenção:\n';
+              cellData.tasks.forEach(t => {
+                texto += '{\n';
+                texto += '  "id": ' + t.id + ',\n';
+                texto += '  "WorkOrderID": "' + t.workOrderID + '",\n';
+                texto += '  "Specialty": "' + t.specialty + '",\n';
+                texto += '  "Entity": "' + t.entity + '",\n';
+                texto += '  "AllocatedWorkTime": ' + t.hours + ',\n';
+                texto += '  "EstimatedWorkTime": ' + t.estimated + ',\n';
+                texto += '  "Date": "' + t.date + '"\n';
+                texto += '},\n';
+              });
+              texto = texto.replace(/,\n$/, '\n');
+              detailsPopup.textContent = texto;
+              // Posiciona o popup próximo ao botão clicado
+              const rect = event.target.getBoundingClientRect();
+              const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+              const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+              detailsPopup.style.left = (rect.left + scrollLeft + 10) + 'px';
+              detailsPopup.style.top = (rect.top + scrollTop + 20) + 'px';
+              detailsPopup.style.display = 'block';
+              detailsPopup.dataset.cell = cellIdentifier;
+            });
+          }
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+
+      // Fecha o painel de detalhes quando clicamos fora dele
+      document.addEventListener('click', () => {
+        const popup = document.getElementById('detailsPopup');
+        if (popup.style.display === 'block') {
+          popup.style.display = 'none';
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
